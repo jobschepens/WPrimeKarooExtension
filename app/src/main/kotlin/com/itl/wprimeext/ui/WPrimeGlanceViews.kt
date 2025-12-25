@@ -59,6 +59,7 @@ fun WPrimeGlanceView(
     valueBottomExtraPadding: Int = 0,
     fixedCharCount: Int? = null, // NEW
     sizeScale: Float = 1f, // NEW scale multiplier
+    showArrow: Boolean = true, // NEW: setting to toggle arrow
 ) {
     val (textAlign, horizontalAlignment) = when (alignment) {
         ViewConfig.Alignment.LEFT -> TextAlign.Start to Alignment.Start
@@ -76,9 +77,6 @@ fun WPrimeGlanceView(
     // Log arrow calculation values for debugging
     println("WPrimeGlanceView - currentPower: ${currentPower}W, criticalPower: ${criticalPower}W, wPrimeJoules: ${wPrimeJoules.roundToInt()}J, capacity: ${safeCapacity.roundToInt()}J, wPrimeFraction: $wPrimeFraction, wPrimeIsFull: $wPrimeIsFull, isAtMaxWithLowPower: $isAtMaxWithLowPower, value: $value")
 
-    // Always show arrow, but force horizontal when at max with low power
-    val showArrow = true
-
     val rotationDegrees = if (isAtMaxWithLowPower) {
         println("WPrimeGlanceView - Setting horizontal arrow (0°) for max W' with low power")
         0f // Force horizontal arrow when at 100% with power below CP
@@ -93,7 +91,10 @@ fun WPrimeGlanceView(
     val currentWidgetSize = LocalSize.current
     val iconSizeDp = 28.dp // Consistent with icon display
     val iconStartPaddingDp = 4.dp // Consistent with icon display
+
     // Reserve space for sizing heuristic only if arrow will be shown
+    // If alignment is RIGHT, arrow is on LEFT. If LEFT/CENTER, arrow is on RIGHT.
+    // We only subtract space from the side where the arrow is.
     val sizingReservedHorizontal = if (showArrow) iconSizeDp + iconStartPaddingDp else 0.dp
 
     val baseAutoSp = pickTextSizeSp(
@@ -121,33 +122,67 @@ fun WPrimeGlanceView(
             modifier = GlanceModifier.fillMaxHeight().wrapContentWidth(),
         ) {
             TitleRow(fieldLabel, textAlign, horizontalAlignment, textColor) // Pass textColor parameter
+
+
+            // Re-implementing the content row to be cleaner and support alignment
             Box(
-                modifier = GlanceModifier
-                    .fillMaxWidth()
-                    .padding(top = (2 + numberVerticalOffset).dp, bottom = (2 + valueBottomExtraPadding).dp),
+                 modifier = GlanceModifier.fillMaxWidth()
+                     .padding(top = (2 + numberVerticalOffset).dp, bottom = (2 + valueBottomExtraPadding).dp),
+                 contentAlignment = when(alignment) {
+                     ViewConfig.Alignment.LEFT -> Alignment.CenterStart
+                     ViewConfig.Alignment.RIGHT -> Alignment.CenterEnd
+                     else -> Alignment.Center
+                 }
             ) {
-                Text(
+                 // We use a Row to hold Arrow + Text or Text + Arrow
+                 // But for Center alignment, we want Text centered in the FIELD, not just centered with the arrow.
+                 // If we just center [Text+Arrow], the Text will be off-center.
+                 // The "Padding" approach is better for centering: Text is centered in full width, but we reserve space for arrow.
+
+                 // Let's go back to the padding approach but apply it correctly.
+                 // We need the Arrow to be OUTSIDE the padding that constrains the text, or absolutely positioned.
+                 // Glance doesn't support absolute positioning well.
+
+                 // Alternative: Use a Row with weights? No weights in Glance.
+
+                 // Let's stick to the "Overlay" concept.
+                 // 1. Text occupies full width, but with padding on one side to make room for arrow.
+                 // 2. Arrow is placed in that room.
+
+                 // Text Layer
+                 Text(
                     text = value,
-                    modifier = GlanceModifier.fillMaxWidth(),
+                    modifier = GlanceModifier.fillMaxWidth()
+                        .padding(
+                            start = if (alignment == ViewConfig.Alignment.RIGHT && showArrow) (iconSizeDp + iconStartPaddingDp) else 0.dp,
+                            end = if (alignment != ViewConfig.Alignment.RIGHT && showArrow) (iconSizeDp + iconStartPaddingDp) else 0.dp
+                        ),
                     style = TextStyle(
-                        color = textColor, // Use the provided text color instead of hardcoded white
-                        fontSize = autoTextSp.sp, // Use dynamically calculated text size
+                        color = textColor,
+                        fontSize = autoTextSp.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Normal,
-                        textAlign = TextAlign.Center,
+                        textAlign = textAlign,
                     ),
                     maxLines = 1,
                 )
 
+                // Arrow Layer
                 if (showArrow) {
-                    // Overlay arrow without affecting text layout
+                    // We need to align this Row to Start or End of the Box
+                    // If alignment is RIGHT, Arrow is on LEFT (Start).
+                    // If alignment is LEFT/CENTER, Arrow is on RIGHT (End).
+
+                    // We can use a Column/Row with fillMaxWidth and alignment to position the arrow.
                     Row(
-                        modifier = GlanceModifier
-                            .padding(start = iconStartPaddingDp, top = 10.dp)
-                            .height(iconSizeDp),
-                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = GlanceModifier.fillMaxWidth(),
+                        horizontalAlignment = if (alignment == ViewConfig.Alignment.RIGHT) Alignment.Start else Alignment.End,
+                        verticalAlignment = Alignment.CenterVertically // Center arrow vertically relative to text height?
+                        // Note: Text height varies. This might put arrow at top/center of the Box.
+                        // The Box height is determined by the Text (largest element).
+                        // So CenterVertically should work.
                     ) {
-                        val arrowDrawableRes = when (rotationDegrees.roundToInt()) {
+                         val arrowDrawableRes = when (rotationDegrees.roundToInt()) {
                             -90 -> R.drawable.ic_direction_arrow_n90
                             -75 -> R.drawable.ic_direction_arrow_n75
                             -60 -> R.drawable.ic_direction_arrow_n60
@@ -163,10 +198,19 @@ fun WPrimeGlanceView(
                             90 -> R.drawable.ic_direction_arrow_p90
                             else -> R.drawable.ic_direction_arrow
                         }
+
+                        // If arrow is on right (End), we need padding on its left (start)
+                        // If arrow is on left (Start), we need padding on its right (end)
+                        val arrowModifier = GlanceModifier.size(iconSizeDp)
+                            .padding(
+                                start = if (alignment != ViewConfig.Alignment.RIGHT) iconStartPaddingDp else 0.dp,
+                                end = if (alignment == ViewConfig.Alignment.RIGHT) iconStartPaddingDp else 0.dp
+                            )
+
                         Image(
                             provider = ImageProvider(arrowDrawableRes),
                             contentDescription = "W' Trend",
-                            modifier = GlanceModifier.size(iconSizeDp),
+                            modifier = arrowModifier,
                             colorFilter = ColorFilter.tint(textColor),
                         )
                     }
@@ -268,7 +312,10 @@ private fun pickTextSizeSp(
     ) {
         return safeMax
     }
-    val availW = (widgetWidth - reservedHorizontal * 2 - 4.dp).coerceAtLeast(0.dp).value
+
+    // Subtract reserved space (arrow) only once, as it's on one side
+    val availW = (widgetWidth - reservedHorizontal - 4.dp).coerceAtLeast(0.dp).value
+
     val titleRowHeight = 22.dp
     val verticalMargins = 8.dp
     val availH = (widgetHeight - titleRowHeight - verticalMargins).coerceAtLeast(0.dp).value
@@ -393,5 +440,27 @@ fun WPrimeGlanceViewPreview_Neutral() {
         textSize = 50, // This is maxSp
         alignment = ViewConfig.Alignment.CENTER,
         maxPowerDeltaForFullRotation = 150,
+    )
+}
+
+@Suppress("unused")
+@SuppressLint("RestrictedApi")
+@OptIn(ExperimentalGlancePreviewApi::class)
+@Preview(widthDp = 200, heightDp = 150)
+@Composable
+fun WPrimeGlanceViewPreview_NoArrow_NoColors() {
+    WPrimeGlanceView(
+        value = "1580",
+        fieldLabel = "W' (kJ)",
+        backgroundColor = UnitColorProvider(Color.White),
+        textColor = UnitColorProvider(Color.Black),
+        currentPower = 200,
+        criticalPower = 200,
+        wPrimeJoules = 9000.0,
+        anaerobicCapacity = 12000.0,
+        textSize = 50, // This is maxSp
+        alignment = ViewConfig.Alignment.CENTER,
+        maxPowerDeltaForFullRotation = 150,
+        showArrow = false,
     )
 }
