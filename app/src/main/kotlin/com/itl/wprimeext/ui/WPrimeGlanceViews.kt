@@ -26,6 +26,7 @@ import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
 import androidx.glance.layout.width
+import androidx.glance.layout.wrapContentSize
 import androidx.glance.preview.ExperimentalGlancePreviewApi
 import androidx.glance.preview.Preview
 import androidx.glance.text.FontFamily
@@ -126,11 +127,15 @@ fun WPrimeGlanceView(
             ) {
                 // LEFT SPACER for CENTER alignment (symmetric with right arrow)
                 if (alignment == ViewConfig.Alignment.CENTER && showArrow) {
-                    Spacer(
+                    Box(
                         modifier = GlanceModifier
                             .fillMaxHeight()
-                            .width(arrowColWidthDp)
-                    )
+                            .padding(horizontal = iconSidePaddingDp)
+                            .wrapContentSize()
+                    ) {
+                        // Empty spacer with icon size
+                        Spacer(modifier = GlanceModifier.size(iconSizeDp))
+                    }
                 }
 
                 // LEFT ARROW COLUMN (for RIGHT alignment)
@@ -138,7 +143,8 @@ fun WPrimeGlanceView(
                     Box(
                         modifier = GlanceModifier
                             .fillMaxHeight()
-                            .width(arrowColWidthDp),
+                            .padding(horizontal = iconSidePaddingDp)
+                            .wrapContentSize(),
                         contentAlignment = Alignment.Center
                     ) {
                         val arrowDrawableRes = when (rotationDegrees.roundToInt()) {
@@ -197,7 +203,8 @@ fun WPrimeGlanceView(
                     Box(
                         modifier = GlanceModifier
                             .fillMaxHeight()
-                            .width(arrowColWidthDp),
+                            .padding(horizontal = iconSidePaddingDp)
+                            .wrapContentSize(),
                         contentAlignment = Alignment.Center
                     ) {
                         val arrowDrawableRes = when (rotationDegrees.roundToInt()) {
