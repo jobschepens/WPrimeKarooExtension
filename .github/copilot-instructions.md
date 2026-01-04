@@ -63,6 +63,38 @@ We are developing an **Android application (in Kotlin)** for the **Hammerhead Ka
 - Implement integration logic based on critical power and recovery
 - Dispatch updated W′ values to Karoo regularly (at reasonable intervals)
 
+## Glance Layouts and Responsive Design
+
+When working with Jetpack Glance for custom graphical data fields:
+
+- **Use `ViewConfig.viewSize` NOT `LocalSize.current`**: 
+  - `LocalSize.current` returns `NaN` in Karoo's Glance implementation
+  - `ViewConfig.viewSize` provides actual pixel dimensions (e.g., `Pair(480, 240)`)
+  - Convert pixels to dp using Karoo's density: `widthDp = (pixels / 2.0f).dp`
+
+- **Responsive breakpoints based on actual pixel dimensions**:
+  - Small field (media pantalla): ~480x240px = 240x120dp
+  - Large field (pantalla completa): ~960x480px = 480x240dp
+  - Use pixel values for breakpoints, not dp values
+
+- **Text size adaptation by character count**:
+  - Apply `widthFactorAdjustment` to force smaller font for longer text
+  - Example: 5-digit numbers need ~1.65x more horizontal space to avoid truncation
+  - Balance between readability and avoiding truncation
+
+- **Icon/arrow sizing**:
+  - Scale icons proportionally to field height (typically 20-25% of height)
+  - Reserve minimal horizontal space (`iconSize + 2dp`) for text calculation
+
+- **Glance limitations**:
+  - NO support for custom `weight()` values (e.g., `weight(2f)`)
+  - Use `defaultWeight()` for flex items, fixed `width()` for fixed columns
+  - Use `fillMaxWidth()` carefully - can push other columns out of view
+
+- **Debug logging**:
+  - Always log actual dimensions when implementing responsive layouts
+  - Use consistent prefix (e.g., `WPRIME_SIZE`) for easy filtering: `adb logcat | grep WPRIME_SIZE`
+
 ## Copilot Instructions Summary
 
 GitHub Copilot should:
