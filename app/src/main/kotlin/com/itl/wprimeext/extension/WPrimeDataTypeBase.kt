@@ -83,9 +83,7 @@ abstract class WPrimeDataTypeBase(
     abstract fun getDisplayText(joulesValue: Double): String
     abstract fun getUnitText(): String
     abstract fun getFieldLabel(): String
-    open fun getNumberVerticalOffset(): Int = 0
     open fun getTargetHeightFraction(): Float = 0.5f
-    open fun getValueBottomPaddingExtra(): Int = 0
     open fun getFixedCharCount(): Int? = null
     open fun getSizeScale(): Float = 1f
 
@@ -244,12 +242,11 @@ abstract class WPrimeDataTypeBase(
                                         anaerobicCapacity = data.anaerobicCapacity,
                                         textSize = config.textSize,
                                         alignment = config.alignment,
-                                        numberVerticalOffset = getNumberVerticalOffset(),
                                         targetHeightFraction = getTargetHeightFraction(),
-                                        valueBottomExtraPadding = getValueBottomPaddingExtra(),
                                         fixedCharCount = getFixedCharCount(),
                                         sizeScale = getSizeScale(),
                                         showArrow = data.showArrow,
+                                        viewSize = config.viewSize,
                                     )
                                 }.remoteViews
                             }
