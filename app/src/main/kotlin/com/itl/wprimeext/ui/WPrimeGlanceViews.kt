@@ -87,31 +87,66 @@ fun WPrimeGlanceView(
     // DEBUG: Log widget dimensions to understand Karoo field sizes
     android.util.Log.d("WPRIME_SIZE", "Widget dimensions: width=${widgetWidthDp.value}dp (${viewSize.first}px), height=${widgetHeightDp.value}dp (${viewSize.second}px), value=$value, alignment=$alignment, showArrow=$showArrow")
 
-    // Responsive icon sizing based on actual pixel dimensions from Karoo logs
-    // Campo pequeño (media pantalla): 480x240px = 240x120dp @ 2.0 density
-    // Campo grande (pantalla completa): ~960x480px = 480x240dp @ 2.0 density
-    val iconSizeDp = when {
-        viewSize.second > 400 -> 36.dp  // Campos muy grandes (>200dp altura)
-        viewSize.second > 280 -> 30.dp  // Campos medianos (>140dp altura)
-        else -> 24.dp                    // Campos pequeños (≤140dp altura, como 120dp)
+    // Clasificación de campos basada en WIDTH y HEIGHT
+    // Usar área del campo como métrica principal, con consideración de proporciones
+    val fieldArea = widgetWidthDp.value * widgetHeightDp.value
+    val isWide = widgetWidthDp.value > 200  // Ancho > 200dp
+    val isTall = widgetHeightDp.value > 90  // Alto > 90dp
+
+    // Clasificación de tamaño de campo:
+    // "LARGE": área grande O (ancho Y alto)
+    // "MEDIUM_WIDE": ancho pero bajo (ej: 239x71dp)
+    // "MEDIUM": área mediana
+    // "SMALL": área pequeña
+    val fieldSize: String = when {
+        fieldArea > 20000 || (isWide && isTall) -> "LARGE"       // >20k área o ambos grandes
+        isWide && !isTall -> "MEDIUM_WIDE"                       // Ancho pero bajo (ej: 239x71)
+        fieldArea > 12000 -> "MEDIUM"                            // Área mediana
+        else -> "SMALL"                                          // Pequeño
+    }
+
+    android.util.Log.d("WPRIME_SIZE", "Field classification: size=$fieldSize, area=$fieldArea, isWide=$isWide, isTall=$isTall")
+
+    // Responsive icon sizing based on field classification
+    val iconSizeDp = when (fieldSize) {
+        "LARGE" -> 48.dp
+        "MEDIUM_WIDE" -> 32.dp   // Iconos medianos para campos anchos pero bajos
+        "MEDIUM" -> 36.dp
+        else -> 28.dp            // SMALL
     }
     // Ancho de columnas: solo el ícono sin padding adicional
     val arrowColWidthDp = iconSizeDp
 
     // DEBUG: Log calculated icon size
-    android.util.Log.d("WPRIME_SIZE", "Calculated iconSize=${iconSizeDp.value}dp for height=${widgetHeightDp.value}dp (${viewSize.second}px)")
+    android.util.Log.d("WPRIME_SIZE", "Calculated iconSize=${iconSizeDp.value}dp for field $fieldSize")
 
     // Reservar espacio para el cálculo de texto - reducido para dar más espacio al texto
     val sizingReservedHorizontal = if (showArrow) (iconSizeDp + 2.dp) else 0.dp
+
+    // Escalar maxSp según el tamaño del campo
+    val scaledMaxSp = when (fieldSize) {
+        "LARGE" -> (textSize * 3.0f).toInt()        // 3.0x
+        "MEDIUM_WIDE" -> (textSize * 2.2f).toInt()  // 2.2x para campos anchos pero bajos (NUEVO)
+        "MEDIUM" -> (textSize * 1.8f).toInt()       // 1.8x
+        else -> (textSize * 1.5f).toInt()           // SMALL: 1.5x
+    }
+
+    // DEBUG: Log scaled maxSp
+    android.util.Log.d("WPRIME_SIZE", "Scaling textSize: original=${textSize}sp, scaled=${scaledMaxSp}sp for field $fieldSize")
 
     val baseAutoSp = pickTextSizeSp(
         value = value,
         widgetWidth = widgetWidthDp,
         widgetHeight = widgetHeightDp,
         reservedHorizontal = sizingReservedHorizontal,
-        maxSp = textSize,
+        maxSp = scaledMaxSp,
         minSp = 24,
-        targetHeightFraction = targetHeightFraction,
+        targetHeightFraction = when (fieldSize) {
+            "LARGE" -> 0.9f          // 90%
+            "MEDIUM_WIDE" -> 0.85f   // 85% para campos anchos pero bajos (CRÍTICO)
+            "MEDIUM" -> 0.75f        // 75%
+            else -> 0.8f             // SMALL: 80%
+        },
         fixedCharCount = fixedCharCount,
     )
     val autoTextSp = (baseAutoSp * sizeScale).toInt().coerceAtLeast(8)
@@ -131,7 +166,31 @@ fun WPrimeGlanceView(
             verticalAlignment = Alignment.Top,
             modifier = GlanceModifier.fillMaxSize(),
         ) {
-            TitleRow(fieldLabel, textAlign, horizontalAlignment, textColor)
+            // Escalar título según clasificación del campo (basado en width Y height)
+            val fieldAreaPx = viewSize.first * viewSize.second
+            val isWidePx = viewSize.first > 400   // Ancho en pixels
+            val isTallPx = viewSize.second > 180  // Alto en pixels
+
+            val titleIconSize = when {
+                fieldAreaPx > 80000 || (isWidePx && isTallPx) -> 32.dp  // Campos grandes
+                isWidePx && !isTallPx -> 16.dp                          // Campos anchos pero bajos: ultra compacto
+                fieldAreaPx > 30000 -> 24.dp                            // Campos medianos
+                else -> 18.dp                                           // Campos pequeños
+            }
+            val titleRowHeight = when {
+                fieldAreaPx > 80000 || (isWidePx && isTallPx) -> 32.dp
+                isWidePx && !isTallPx -> 16.dp
+                fieldAreaPx > 30000 -> 24.dp
+                else -> 18.dp
+            }
+            val titleTextSize = when {
+                fieldAreaPx > 80000 || (isWidePx && isTallPx) -> 20
+                isWidePx && !isTallPx -> 11
+                fieldAreaPx > 30000 -> 16
+                else -> 12
+            }
+
+            TitleRow(fieldLabel, textAlign, horizontalAlignment, textColor, titleRowHeight, titleIconSize, titleTextSize)
 
             // Value area - Row with arrow column(s) and text column
             Row(
@@ -257,24 +316,27 @@ private fun TitleRow(
     textAlign: TextAlign,
     horizontalAlignment: Alignment.Horizontal,
     textColor: UnitColorProvider,
+    heightDp: Dp = 26.dp,
+    iconSizeDp: Dp = 26.dp,
+    textSizeSp: Int = 18,
 ) {
     Row(
         horizontalAlignment = horizontalAlignment,
         verticalAlignment = Alignment.CenterVertically,
         modifier = GlanceModifier
             .padding(0.dp)
-            .height(26.dp),  // Aumentado para acomodar ícono más grande
+            .height(heightDp),
     ) {
         Image(
             provider = ImageProvider(R.drawable.ic_wprime_battery),
             contentDescription = "W' Icon",
-            modifier = GlanceModifier.size(26.dp).absolutePadding(top = 4.dp),  // Aumentado de 22dp a 26dp
+            modifier = GlanceModifier.size(iconSizeDp).absolutePadding(top = 4.dp),
         )
         Text(
             text = text,
             style = TextStyle(
                 color = textColor,
-                fontSize = 18.sp,
+                fontSize = textSizeSp.sp,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Normal,
                 textAlign = textAlign,
@@ -318,8 +380,8 @@ fun WPrimeNotAvailableGlanceView(
 }
 
 // Helper functions for dynamic text sizing
-private const val CHAR_WIDTH_FACTOR = 0.62f
-private const val LINE_HEIGHT_FACTOR = 1.2f
+private const val CHAR_WIDTH_FACTOR = 0.30f  // Ultra reducido para permitir texto 30% más grande
+private const val LINE_HEIGHT_FACTOR = 0.95f  // Por debajo de 1.0 para maximizar aún más el espacio vertical
 
 private fun pickTextSizeSp(
     value: String,
@@ -343,9 +405,26 @@ private fun pickTextSizeSp(
     // Subtract reserved space (arrow) only once
     val availW = (widgetWidth - reservedHorizontal - 4.dp).coerceAtLeast(0.dp).value
 
-    // More efficient vertical space usage - ajustado para ícono más grande
-    val titleRowHeight = if (widgetHeight > 150.dp) 26.dp else 24.dp  // Ajustado para nuevo tamaño de ícono
-    val verticalMargins = if (widgetHeight > 150.dp) 8.dp else 4.dp
+    // Clasificación de campo basada en ÁREA y PROPORCIONES (width Y height)
+    val fieldArea = widgetWidth.value * widgetHeight.value
+    val isWide = widgetWidth.value > 200
+    val isTall = widgetHeight.value > 90
+    val isWideButLow = isWide && !isTall  // Campo ancho pero bajo (ej: 239x71dp)
+
+    // More efficient vertical space usage - escalado según clasificación del campo
+    val titleRowHeight = when {
+        fieldArea > 20000 || (isWide && isTall) -> 32.dp    // Campos grandes
+        isWideButLow -> 16.dp                                // Campos anchos pero bajos: ULTRA compacto
+        fieldArea > 12000 -> 24.dp                           // Campos medianos
+        else -> 18.dp                                        // Campos pequeños
+    }
+    // Reducir márgenes verticales al mínimo para dar más espacio al texto
+    val verticalMargins = when {
+        fieldArea > 20000 -> 4.dp
+        isWideButLow -> 1.dp       // Mínimo para campos anchos pero bajos
+        fieldArea > 12000 -> 2.dp
+        else -> 1.dp
+    }
     val availH = (widgetHeight - titleRowHeight - verticalMargins).coerceAtLeast(0.dp).value
     if (availW <= 0f || availH <= 0f) {
         return safeMax
@@ -353,27 +432,41 @@ private fun pickTextSizeSp(
 
     val targetChars = fixedCharCount ?: value.length
 
-    // Ajustar el factor de ancho según la longitud del texto
-    // Balance entre evitar truncamiento y mantener texto visible
+    // Ajustar el factor de ancho según la longitud del texto y clasificación del campo
+    // Campos anchos (isWide) pueden ser más agresivos con el espacio horizontal
     val widthFactorAdjustment = when {
         targetChars <= 4 -> 1.0f
-        targetChars == 5 -> 1.65f  // 65% más espacio - balance para no truncar pero visible
-        else -> 2.0f               // 100% más espacio
+        targetChars == 5 -> if (isWide) 1.05f else 1.7f   // Anchos: MUY agresivo (1.05 para texto más grande), estrechos: conservador (1.7 sin truncar)
+        else -> if (isWide) 1.2f else 1.8f                // Similar para 6+ caracteres
     }
 
     val avgUnitPerChar = 1.0f
     val units = targetChars * avgUnitPerChar * widthFactorAdjustment
 
+    // DEBUG: Log width factor decision
+    android.util.Log.d("WPRIME_SIZE",
+        "Field logic: area=$fieldArea, isWide=$isWide, isTall=$isTall, isWideButLow=$isWideButLow, " +
+        "widthFactor=$widthFactorAdjustment, titleH=${titleRowHeight.value}dp"
+    )
+
     val fromWidth = if (units * CHAR_WIDTH_FACTOR > 0) (availW / (units * CHAR_WIDTH_FACTOR)) else safeMax.toFloat()
     // Increase height usage factor for better vertical space utilization
-    val adjustedFraction = targetHeightFraction.coerceIn(0.4f, 0.9f)
+    val adjustedFraction = targetHeightFraction.coerceIn(0.5f, 0.95f)  // Aumentado de 0.9 a 0.95
     val fromHeight = (availH * adjustedFraction) / LINE_HEIGHT_FACTOR
     val raw = fromWidth.coerceAtMost(fromHeight)
     val clamped = raw.coerceIn(minSp.toFloat(), safeMax.toFloat())
 
+    // DEBUG: Log calculation details
+    android.util.Log.d("WPRIME_SIZE",
+        "pickTextSizeSp: availW=${availW}dp, availH=${availH}dp, targetChars=$targetChars, " +
+        "widthFactor=$widthFactorAdjustment, fromWidth=$fromWidth, fromHeight=$fromHeight, " +
+        "raw=$raw, clamped=$clamped, maxSp=$safeMax"
+    )
+
     if (fixedCharCount != null) return clamped.toInt()
 
-    val steps = listOf(64, 56, 50, 46, 42, 38, 34, 32, 30, 28, 26, 24)
+    // Expandir steps para incluir tamaños más grandes para campos grandes
+    val steps = listOf(90, 84, 78, 72, 64, 56, 50, 46, 42, 38, 34, 32, 30, 28, 26, 24)
     val stepped = steps.firstOrNull { clamped >= it && it <= safeMax } ?: steps.last { it <= safeMax }
     return stepped
 }
