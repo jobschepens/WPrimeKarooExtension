@@ -10,7 +10,6 @@ import androidx.glance.ColorFilter
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
 import androidx.glance.ImageProvider
-import androidx.glance.LocalSize
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.background
 import androidx.glance.layout.Alignment
@@ -20,11 +19,10 @@ import androidx.glance.layout.Row
 import androidx.glance.layout.absolutePadding
 import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxSize
-import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
-import androidx.glance.layout.wrapContentWidth
+import androidx.glance.layout.width
 import androidx.glance.preview.ExperimentalGlancePreviewApi
 import androidx.glance.preview.Preview
 import androidx.glance.text.FontFamily
@@ -49,16 +47,16 @@ fun WPrimeGlanceView(
     textColor: UnitColorProvider = UnitColorProvider(Color.White),
     currentPower: Int,
     criticalPower: Int,
-    wPrimeJoules: Double, // NEW: raw Joules remaining
-    anaerobicCapacity: Double, // NEW: capacity to compute percentage internally
-    textSize: Int = 56, // This will act as maxSp for dynamic sizing
+    wPrimeJoules: Double,
+    anaerobicCapacity: Double,
+    textSize: Int = 56,
     alignment: ViewConfig.Alignment = ViewConfig.Alignment.RIGHT,
     maxPowerDeltaForFullRotation: Int = 150,
-    numberVerticalOffset: Int = 0, // new configurable vertical offset
     targetHeightFraction: Float = 0.5f,
-    valueBottomExtraPadding: Int = 0,
-    fixedCharCount: Int? = null, // NEW
-    sizeScale: Float = 1f, // NEW scale multiplier
+    fixedCharCount: Int? = null,
+    sizeScale: Float = 1f,
+    showArrow: Boolean = true,
+    viewSize: Pair<Int, Int> = Pair(480, 240), // Size in pixels from ViewConfig
 ) {
     val (textAlign, horizontalAlignment) = when (alignment) {
         ViewConfig.Alignment.LEFT -> TextAlign.Start to Alignment.Start
@@ -70,43 +68,91 @@ fun WPrimeGlanceView(
     val wPrimeFraction = (wPrimeJoules / safeCapacity).toFloat().coerceIn(0f, 1f)
 
     val powerDelta = currentPower - criticalPower
-    val wPrimeIsFull = wPrimeFraction >= 0.995f // treat >=99.5% as full
+    val wPrimeIsFull = wPrimeFraction >= 0.995f
     val isAtMaxWithLowPower = currentPower < criticalPower && wPrimeIsFull
 
-    // Log arrow calculation values for debugging
-    println("WPrimeGlanceView - currentPower: ${currentPower}W, criticalPower: ${criticalPower}W, wPrimeJoules: ${wPrimeJoules.roundToInt()}J, capacity: ${safeCapacity.roundToInt()}J, wPrimeFraction: $wPrimeFraction, wPrimeIsFull: $wPrimeIsFull, isAtMaxWithLowPower: $isAtMaxWithLowPower, value: $value")
-
-    // Always show arrow, but force horizontal when at max with low power
-    val showArrow = true
-
     val rotationDegrees = if (isAtMaxWithLowPower) {
-        println("WPrimeGlanceView - Setting horizontal arrow (0°) for max W' with low power")
-        0f // Force horizontal arrow when at 100% with power below CP
+        0f
     } else {
         val rotationRatio = (powerDelta.toFloat() / maxPowerDeltaForFullRotation).coerceIn(-1f, 1f)
-        val degrees = ((if (powerDelta == 0) 0f else rotationRatio * 90f) / 15f).roundToInt() * 15f
-        println("WPrimeGlanceView - Setting calculated arrow rotation: $degrees° (powerDelta: ${powerDelta}W)")
-        degrees
+        ((if (powerDelta == 0) 0f else rotationRatio * 90f) / 15f).roundToInt() * 15f
     }
 
-    // Dynamic text size calculation
-    val currentWidgetSize = LocalSize.current
-    val iconSizeDp = 28.dp // Consistent with icon display
-    val iconStartPaddingDp = 4.dp // Consistent with icon display
-    // Reserve space for sizing heuristic only if arrow will be shown
-    val sizingReservedHorizontal = if (showArrow) iconSizeDp + iconStartPaddingDp else 0.dp
+    // Dynamic text size calculation with responsive sizing
+    // Convert pixel dimensions to dp (Karoo has ~2.0 density)
+    val density = 2.0f // Karoo 3 density
+    val widgetWidthDp = (viewSize.first / density).dp
+    val widgetHeightDp = (viewSize.second / density).dp
+
+    // DEBUG: Log widget dimensions to understand Karoo field sizes
+    android.util.Log.d("WPRIME_SIZE", "Widget dimensions: width=${widgetWidthDp.value}dp (${viewSize.first}px), height=${widgetHeightDp.value}dp (${viewSize.second}px), value=$value, alignment=$alignment, showArrow=$showArrow")
+
+    // Clasificación de campos basada en WIDTH y HEIGHT
+    // Usar área del campo como métrica principal, con consideración de proporciones
+    val fieldArea = widgetWidthDp.value * widgetHeightDp.value
+    val isWide = widgetWidthDp.value > 200  // Ancho > 200dp
+    val isTall = widgetHeightDp.value > 90  // Alto > 90dp
+
+    // Clasificación de tamaño de campo:
+    // "LARGE": área grande O (ancho Y alto)
+    // "MEDIUM_WIDE": ancho pero bajo (ej: 239x71dp)
+    // "MEDIUM": área mediana
+    // "SMALL": área pequeña
+    val fieldSize: String = when {
+        fieldArea > 20000 || (isWide && isTall) -> "LARGE"       // >20k área o ambos grandes
+        isWide && !isTall -> "MEDIUM_WIDE"                       // Ancho pero bajo (ej: 239x71)
+        fieldArea > 12000 -> "MEDIUM"                            // Área mediana
+        else -> "SMALL"                                          // Pequeño
+    }
+
+    android.util.Log.d("WPRIME_SIZE", "Field classification: size=$fieldSize, area=$fieldArea, isWide=$isWide, isTall=$isTall")
+
+    // Responsive icon sizing based on field classification
+    val iconSizeDp = when (fieldSize) {
+        "LARGE" -> 48.dp
+        "MEDIUM_WIDE" -> 32.dp   // Iconos medianos para campos anchos pero bajos
+        "MEDIUM" -> 36.dp
+        else -> 28.dp            // SMALL
+    }
+    // Ancho de columnas: solo el ícono sin padding adicional
+    val arrowColWidthDp = iconSizeDp
+
+    // DEBUG: Log calculated icon size
+    android.util.Log.d("WPRIME_SIZE", "Calculated iconSize=${iconSizeDp.value}dp for field $fieldSize")
+
+    // Reservar espacio para el cálculo de texto - reducido para dar más espacio al texto
+    val sizingReservedHorizontal = if (showArrow) (iconSizeDp + 2.dp) else 0.dp
+
+    // Escalar maxSp según el tamaño del campo
+    val scaledMaxSp = when (fieldSize) {
+        "LARGE" -> (textSize * 3.0f).toInt()        // 3.0x
+        "MEDIUM_WIDE" -> (textSize * 2.2f).toInt()  // 2.2x para campos anchos pero bajos (NUEVO)
+        "MEDIUM" -> (textSize * 1.8f).toInt()       // 1.8x
+        else -> (textSize * 1.5f).toInt()           // SMALL: 1.5x
+    }
+
+    // DEBUG: Log scaled maxSp
+    android.util.Log.d("WPRIME_SIZE", "Scaling textSize: original=${textSize}sp, scaled=${scaledMaxSp}sp for field $fieldSize")
 
     val baseAutoSp = pickTextSizeSp(
         value = value,
-        widgetWidth = currentWidgetSize.width,
-        widgetHeight = currentWidgetSize.height,
-        reservedHorizontal = sizingReservedHorizontal, // use reserved width only for sizing
-        maxSp = textSize, // revert to provided max
-        minSp = 24, // Default minimum, can be adjusted
-        targetHeightFraction = targetHeightFraction,
+        widgetWidth = widgetWidthDp,
+        widgetHeight = widgetHeightDp,
+        reservedHorizontal = sizingReservedHorizontal,
+        maxSp = scaledMaxSp,
+        minSp = 24,
+        targetHeightFraction = when (fieldSize) {
+            "LARGE" -> 0.9f          // 90%
+            "MEDIUM_WIDE" -> 0.85f   // 85% para campos anchos pero bajos (CRÍTICO)
+            "MEDIUM" -> 0.75f        // 75%
+            else -> 0.8f             // SMALL: 80%
+        },
         fixedCharCount = fixedCharCount,
     )
     val autoTextSp = (baseAutoSp * sizeScale).toInt().coerceAtLeast(8)
+
+    // DEBUG: Log calculated text size
+    android.util.Log.d("WPRIME_SIZE", "Calculated textSize=${autoTextSp}sp (base=${baseAutoSp}sp, scale=${sizeScale}) for value='$value' (${value.length} chars)")
 
     Box(
         modifier = GlanceModifier
@@ -116,63 +162,150 @@ fun WPrimeGlanceView(
         contentAlignment = Alignment.Center,
     ) {
         Column(
-            horizontalAlignment = horizontalAlignment,
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalAlignment = Alignment.Top,
-            modifier = GlanceModifier.fillMaxHeight().wrapContentWidth(),
+            modifier = GlanceModifier.fillMaxSize(),
         ) {
-            TitleRow(fieldLabel, textAlign, horizontalAlignment, textColor) // Pass textColor parameter
-            Box(
-                modifier = GlanceModifier
-                    .fillMaxWidth()
-                    .padding(top = (2 + numberVerticalOffset).dp, bottom = (2 + valueBottomExtraPadding).dp),
-            ) {
-                Text(
-                    text = value,
-                    modifier = GlanceModifier.fillMaxWidth(),
-                    style = TextStyle(
-                        color = textColor, // Use the provided text color instead of hardcoded white
-                        fontSize = autoTextSp.sp, // Use dynamically calculated text size
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Normal,
-                        textAlign = TextAlign.Center,
-                    ),
-                    maxLines = 1,
-                )
+            // Escalar título según clasificación del campo (basado en width Y height)
+            val fieldAreaPx = viewSize.first * viewSize.second
+            val isWidePx = viewSize.first > 400   // Ancho en pixels
+            val isTallPx = viewSize.second > 180  // Alto en pixels
 
-                if (showArrow) {
-                    // Overlay arrow without affecting text layout
-                    Row(
-                        modifier = GlanceModifier
-                            .padding(start = iconStartPaddingDp, top = 10.dp)
-                            .height(iconSizeDp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val arrowDrawableRes = when (rotationDegrees.roundToInt()) {
-                            -90 -> R.drawable.ic_direction_arrow_n90
-                            -75 -> R.drawable.ic_direction_arrow_n75
-                            -60 -> R.drawable.ic_direction_arrow_n60
-                            -45 -> R.drawable.ic_direction_arrow_n45
-                            -30 -> R.drawable.ic_direction_arrow_n30
-                            -15 -> R.drawable.ic_direction_arrow_n15
-                            0 -> R.drawable.ic_direction_arrow
-                            15 -> R.drawable.ic_direction_arrow_p15
-                            30 -> R.drawable.ic_direction_arrow_p30
-                            45 -> R.drawable.ic_direction_arrow_p45
-                            60 -> R.drawable.ic_direction_arrow_p60
-                            75 -> R.drawable.ic_direction_arrow_p75
-                            90 -> R.drawable.ic_direction_arrow_p90
-                            else -> R.drawable.ic_direction_arrow
-                        }
-                        Image(
-                            provider = ImageProvider(arrowDrawableRes),
-                            contentDescription = "W' Trend",
-                            modifier = GlanceModifier.size(iconSizeDp),
-                            colorFilter = ColorFilter.tint(textColor),
-                        )
+            val titleIconSize = when {
+                fieldAreaPx > 80000 || (isWidePx && isTallPx) -> 32.dp  // Campos grandes
+                isWidePx && !isTallPx -> 16.dp                          // Campos anchos pero bajos: ultra compacto
+                fieldAreaPx > 30000 -> 24.dp                            // Campos medianos
+                else -> 18.dp                                           // Campos pequeños
+            }
+            val titleRowHeight = when {
+                fieldAreaPx > 80000 || (isWidePx && isTallPx) -> 32.dp
+                isWidePx && !isTallPx -> 16.dp
+                fieldAreaPx > 30000 -> 24.dp
+                else -> 18.dp
+            }
+            val titleTextSize = when {
+                fieldAreaPx > 80000 || (isWidePx && isTallPx) -> 20
+                isWidePx && !isTallPx -> 11
+                fieldAreaPx > 30000 -> 16
+                else -> 12
+            }
+
+            TitleRow(fieldLabel, textAlign, horizontalAlignment, textColor, titleRowHeight, titleIconSize, titleTextSize)
+
+            // Value area - Row with arrow column(s) and text column
+            Row(
+                modifier = GlanceModifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // LEFT ARROW COLUMN (for RIGHT and CENTER alignment)
+                if ((alignment == ViewConfig.Alignment.RIGHT || alignment == ViewConfig.Alignment.CENTER) && showArrow) {
+                    ArrowColumn(
+                        rotationDegrees = rotationDegrees,
+                        iconSizeDp = iconSizeDp,
+                        arrowColWidthDp = arrowColWidthDp,
+                        textColor = textColor,
+                    )
+                }
+
+                // TEXT COLUMN (bottom-aligned, texto pegado al fondo)
+                Box(
+                    modifier = GlanceModifier
+                        .fillMaxHeight()
+                        .defaultWeight()
+                        .padding(bottom = 2.dp),
+                    contentAlignment = when(alignment) {
+                        ViewConfig.Alignment.LEFT -> Alignment.BottomStart
+                        ViewConfig.Alignment.RIGHT -> Alignment.BottomEnd
+                        else -> Alignment.BottomCenter
                     }
+                ) {
+                    Text(
+                        text = value,
+                        style = TextStyle(
+                            color = textColor,
+                            fontSize = autoTextSp.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Normal,
+                            textAlign = textAlign,
+                        ),
+                        maxLines = 1,
+                    )
+                }
+
+                // RIGHT ARROW COLUMN (for LEFT alignment only)
+                if (alignment == ViewConfig.Alignment.LEFT && showArrow) {
+                    ArrowColumn(
+                        rotationDegrees = rotationDegrees,
+                        iconSizeDp = iconSizeDp,
+                        arrowColWidthDp = arrowColWidthDp,
+                        textColor = textColor,
+                    )
+                }
+
+                // RIGHT SPACER for CENTER alignment (balances left arrow to keep text centered)
+                if (alignment == ViewConfig.Alignment.CENTER && showArrow) {
+                    SpacerColumn(arrowColWidthDp = arrowColWidthDp)
                 }
             }
         }
+    }
+}
+
+/**
+ * Renders an arrow column showing W' trend direction
+ */
+@SuppressLint("RestrictedApi")
+@Composable
+private fun ArrowColumn(
+    rotationDegrees: Float,
+    iconSizeDp: Dp,
+    arrowColWidthDp: Dp,
+    textColor: UnitColorProvider,
+) {
+    Box(
+        modifier = GlanceModifier
+            .fillMaxHeight()
+            .width(arrowColWidthDp),
+        contentAlignment = Alignment.Center
+    ) {
+        val arrowDrawableRes = when (rotationDegrees.roundToInt()) {
+            -90 -> R.drawable.ic_direction_arrow_n90
+            -75 -> R.drawable.ic_direction_arrow_n75
+            -60 -> R.drawable.ic_direction_arrow_n60
+            -45 -> R.drawable.ic_direction_arrow_n45
+            -30 -> R.drawable.ic_direction_arrow_n30
+            -15 -> R.drawable.ic_direction_arrow_n15
+            0 -> R.drawable.ic_direction_arrow
+            15 -> R.drawable.ic_direction_arrow_p15
+            30 -> R.drawable.ic_direction_arrow_p30
+            45 -> R.drawable.ic_direction_arrow_p45
+            60 -> R.drawable.ic_direction_arrow_p60
+            75 -> R.drawable.ic_direction_arrow_p75
+            90 -> R.drawable.ic_direction_arrow_p90
+            else -> R.drawable.ic_direction_arrow
+        }
+
+        Image(
+            provider = ImageProvider(arrowDrawableRes),
+            contentDescription = "W' Trend",
+            modifier = GlanceModifier.size(iconSizeDp),
+            colorFilter = ColorFilter.tint(textColor),
+        )
+    }
+}
+
+/**
+ * Renders an empty spacer column for CENTER alignment balance
+ */
+@SuppressLint("RestrictedApi")
+@Composable
+private fun SpacerColumn(arrowColWidthDp: Dp) {
+    Box(
+        modifier = GlanceModifier
+            .fillMaxHeight()
+            .width(arrowColWidthDp),
+    ) {
+        // Empty spacer to balance arrow on opposite side
     }
 }
 
@@ -182,25 +315,28 @@ private fun TitleRow(
     text: String,
     textAlign: TextAlign,
     horizontalAlignment: Alignment.Horizontal,
-    textColor: UnitColorProvider, // Add textColor parameter
+    textColor: UnitColorProvider,
+    heightDp: Dp = 26.dp,
+    iconSizeDp: Dp = 26.dp,
+    textSizeSp: Int = 18,
 ) {
     Row(
         horizontalAlignment = horizontalAlignment,
         verticalAlignment = Alignment.CenterVertically,
         modifier = GlanceModifier
             .padding(0.dp)
-            .height(22.dp), // This height is used in pickTextSizeSp
+            .height(heightDp),
     ) {
         Image(
             provider = ImageProvider(R.drawable.ic_wprime_battery),
             contentDescription = "W' Icon",
-            modifier = GlanceModifier.size(22.dp).absolutePadding(top = 4.dp),
+            modifier = GlanceModifier.size(iconSizeDp).absolutePadding(top = 4.dp),
         )
         Text(
             text = text,
             style = TextStyle(
-                color = textColor, // Use the passed textColor
-                fontSize = 18.sp,
+                color = textColor,
+                fontSize = textSizeSp.sp,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Normal,
                 textAlign = textAlign,
@@ -210,9 +346,6 @@ private fun TitleRow(
     }
 }
 
-/**
- * Glance composable for "Not Available" or "Searching" states
- */
 @SuppressLint("RestrictedApi")
 @Composable
 fun WPrimeNotAvailableGlanceView(
@@ -229,7 +362,7 @@ fun WPrimeNotAvailableGlanceView(
             modifier = GlanceModifier
                 .fillMaxSize()
                 .background(Color.Gray)
-                .padding(8.dp), // This padding is used as 'margins' in pickTextSizeSp
+                .padding(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalAlignment = Alignment.Vertical.CenterVertically,
         ) {
@@ -247,8 +380,8 @@ fun WPrimeNotAvailableGlanceView(
 }
 
 // Helper functions for dynamic text sizing
-private const val CHAR_WIDTH_FACTOR = 0.62f
-private const val LINE_HEIGHT_FACTOR = 1.2f
+private const val CHAR_WIDTH_FACTOR = 0.30f  // Ultra reducido para permitir texto 30% más grande
+private const val LINE_HEIGHT_FACTOR = 0.95f  // Por debajo de 1.0 para maximizar aún más el espacio vertical
 
 private fun pickTextSizeSp(
     value: String,
@@ -268,30 +401,72 @@ private fun pickTextSizeSp(
     ) {
         return safeMax
     }
-    val availW = (widgetWidth - reservedHorizontal * 2 - 4.dp).coerceAtLeast(0.dp).value
-    val titleRowHeight = 22.dp
-    val verticalMargins = 8.dp
+
+    // Subtract reserved space (arrow) only once
+    val availW = (widgetWidth - reservedHorizontal - 4.dp).coerceAtLeast(0.dp).value
+
+    // Clasificación de campo basada en ÁREA y PROPORCIONES (width Y height)
+    val fieldArea = widgetWidth.value * widgetHeight.value
+    val isWide = widgetWidth.value > 200
+    val isTall = widgetHeight.value > 90
+    val isWideButLow = isWide && !isTall  // Campo ancho pero bajo (ej: 239x71dp)
+
+    // More efficient vertical space usage - escalado según clasificación del campo
+    val titleRowHeight = when {
+        fieldArea > 20000 || (isWide && isTall) -> 32.dp    // Campos grandes
+        isWideButLow -> 16.dp                                // Campos anchos pero bajos: ULTRA compacto
+        fieldArea > 12000 -> 24.dp                           // Campos medianos
+        else -> 18.dp                                        // Campos pequeños
+    }
+    // Reducir márgenes verticales al mínimo para dar más espacio al texto
+    val verticalMargins = when {
+        fieldArea > 20000 -> 4.dp
+        isWideButLow -> 1.dp       // Mínimo para campos anchos pero bajos
+        fieldArea > 12000 -> 2.dp
+        else -> 1.dp
+    }
     val availH = (widgetHeight - titleRowHeight - verticalMargins).coerceAtLeast(0.dp).value
     if (availW <= 0f || availH <= 0f) {
         return safeMax
     }
 
     val targetChars = fixedCharCount ?: value.length
-    // Approx char units using monospace proportions from effectiveCharUnits for '8' width baseline
-    val avgUnitPerChar = 1.0f // treat each char equal so fixed width stable
-    val units = targetChars * avgUnitPerChar
+
+    // Ajustar el factor de ancho según la longitud del texto y clasificación del campo
+    // Campos anchos (isWide) pueden ser más agresivos con el espacio horizontal
+    val widthFactorAdjustment = when {
+        targetChars <= 4 -> 1.0f
+        targetChars == 5 -> if (isWide) 1.05f else 1.7f   // Anchos: MUY agresivo (1.05 para texto más grande), estrechos: conservador (1.7 sin truncar)
+        else -> if (isWide) 1.2f else 1.8f                // Similar para 6+ caracteres
+    }
+
+    val avgUnitPerChar = 1.0f
+    val units = targetChars * avgUnitPerChar * widthFactorAdjustment
+
+    // DEBUG: Log width factor decision
+    android.util.Log.d("WPRIME_SIZE",
+        "Field logic: area=$fieldArea, isWide=$isWide, isTall=$isTall, isWideButLow=$isWideButLow, " +
+        "widthFactor=$widthFactorAdjustment, titleH=${titleRowHeight.value}dp"
+    )
 
     val fromWidth = if (units * CHAR_WIDTH_FACTOR > 0) (availW / (units * CHAR_WIDTH_FACTOR)) else safeMax.toFloat()
-    val adjustedFraction = targetHeightFraction.coerceIn(0.3f, 0.85f)
+    // Increase height usage factor for better vertical space utilization
+    val adjustedFraction = targetHeightFraction.coerceIn(0.5f, 0.95f)  // Aumentado de 0.9 a 0.95
     val fromHeight = (availH * adjustedFraction) / LINE_HEIGHT_FACTOR
     val raw = fromWidth.coerceAtMost(fromHeight)
     val clamped = raw.coerceIn(minSp.toFloat(), safeMax.toFloat())
 
-    // For fixedCharCount we skip quantization to preserve precise scaling
+    // DEBUG: Log calculation details
+    android.util.Log.d("WPRIME_SIZE",
+        "pickTextSizeSp: availW=${availW}dp, availH=${availH}dp, targetChars=$targetChars, " +
+        "widthFactor=$widthFactorAdjustment, fromWidth=$fromWidth, fromHeight=$fromHeight, " +
+        "raw=$raw, clamped=$clamped, maxSp=$safeMax"
+    )
+
     if (fixedCharCount != null) return clamped.toInt()
 
-    // Previous quantization for percentage case if not fixed
-    val steps = listOf(64, 56, 50, 46, 42, 38, 34, 32, 30, 28, 26, 24)
+    // Expandir steps para incluir tamaños más grandes para campos grandes
+    val steps = listOf(90, 84, 78, 72, 64, 56, 50, 46, 42, 38, 34, 32, 30, 28, 26, 24)
     val stepped = steps.firstOrNull { clamped >= it && it <= safeMax } ?: steps.last { it <= safeMax }
     return stepped
 }
@@ -310,9 +485,10 @@ fun WPrimeGlanceViewPreview() {
         criticalPower = 200,
         wPrimeJoules = 8000.0,
         anaerobicCapacity = 12000.0,
-        textSize = 50, // This is maxSp
+        textSize = 50,
         alignment = ViewConfig.Alignment.CENTER,
         maxPowerDeltaForFullRotation = 150,
+        viewSize = Pair(840, 300), // 420dp * 2.0 density
     )
 }
 
@@ -330,9 +506,10 @@ fun WPrimeGlanceViewPreview_Recovering() {
         criticalPower = 200,
         wPrimeJoules = 10800.0,
         anaerobicCapacity = 12000.0,
-        textSize = 50, // This is maxSp
+        textSize = 50,
         alignment = ViewConfig.Alignment.CENTER,
         maxPowerDeltaForFullRotation = 150,
+        viewSize = Pair(400, 300),
     )
 }
 
@@ -343,16 +520,17 @@ fun WPrimeGlanceViewPreview_Recovering() {
 @Composable
 fun WPrimeGlanceViewPreview_FullNoArrow() {
     WPrimeGlanceView(
-        value = "11438", // Long value to test auto-sizing
+        value = "11438",
         fieldLabel = "W' (kJ)",
         backgroundColor = UnitColorProvider(Color.hsl(120f, 0.5f, 0.5f)),
         currentPower = 100,
         criticalPower = 200,
         wPrimeJoules = 12000.0,
         anaerobicCapacity = 12000.0,
-        textSize = 50, // This is maxSp
+        textSize = 50,
         alignment = ViewConfig.Alignment.CENTER,
         maxPowerDeltaForFullRotation = 150,
+        viewSize = Pair(400, 300),
     )
 }
 
@@ -363,16 +541,17 @@ fun WPrimeGlanceViewPreview_FullNoArrow() {
 @Composable
 fun WPrimeGlanceViewPreview_MaxEffort() {
     WPrimeGlanceView(
-        value = "3789", // Another long value
+        value = "3789",
         fieldLabel = "W' (kJ)",
         backgroundColor = UnitColorProvider(Color.Red),
         currentPower = 380,
         criticalPower = 200,
         wPrimeJoules = 2000.0,
         anaerobicCapacity = 12000.0,
-        textSize = 50, // This is maxSp
-        alignment = ViewConfig.Alignment.CENTER,
+        textSize = 50,
+        alignment = ViewConfig.Alignment.LEFT,
         maxPowerDeltaForFullRotation = 150,
+        viewSize = Pair(400, 300),
     )
 }
 
@@ -390,8 +569,33 @@ fun WPrimeGlanceViewPreview_Neutral() {
         criticalPower = 200,
         wPrimeJoules = 9000.0,
         anaerobicCapacity = 12000.0,
-        textSize = 50, // This is maxSp
-        alignment = ViewConfig.Alignment.CENTER,
+        textSize = 50,
+        alignment = ViewConfig.Alignment.RIGHT,
         maxPowerDeltaForFullRotation = 150,
+        viewSize = Pair(400, 300),
     )
 }
+
+@Suppress("unused")
+@SuppressLint("RestrictedApi")
+@OptIn(ExperimentalGlancePreviewApi::class)
+@Preview(widthDp = 200, heightDp = 150)
+@Composable
+fun WPrimeGlanceViewPreview_NoArrow_NoColors() {
+    WPrimeGlanceView(
+        value = "1580",
+        fieldLabel = "W' (kJ)",
+        backgroundColor = UnitColorProvider(Color.White),
+        textColor = UnitColorProvider(Color.Black),
+        currentPower = 200,
+        criticalPower = 200,
+        wPrimeJoules = 9000.0,
+        anaerobicCapacity = 12000.0,
+        textSize = 50,
+        alignment = ViewConfig.Alignment.CENTER,
+        maxPowerDeltaForFullRotation = 150,
+        showArrow = false,
+        viewSize = Pair(400, 300),
+    )
+}
+

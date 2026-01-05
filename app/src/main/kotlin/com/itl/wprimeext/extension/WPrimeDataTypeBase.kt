@@ -75,15 +75,15 @@ abstract class WPrimeDataTypeBase(
         val currentPower: Int,
         val criticalPower: Int,
         val anaerobicCapacity: Double,
+        val showArrow: Boolean,
+        val useColors: Boolean,
     )
 
     abstract fun getFormatDataTypeId(): String
     abstract fun getDisplayText(joulesValue: Double): String
     abstract fun getUnitText(): String
     abstract fun getFieldLabel(): String
-    open fun getNumberVerticalOffset(): Int = 0
     open fun getTargetHeightFraction(): Float = 0.5f
-    open fun getValueBottomPaddingExtra(): Int = 0
     open fun getFixedCharCount(): Int? = null
     open fun getSizeScale(): Float = 1f
 
@@ -234,19 +234,19 @@ abstract class WPrimeDataTypeBase(
                                     WPrimeGlanceView(
                                         value = displayText,
                                         fieldLabel = getFieldLabel(),
-                                        backgroundColor = ColorProvider(data.backgroundColor),
-                                        textColor = ColorProvider(data.textColor),
+                                        backgroundColor = if (data.useColors) ColorProvider(data.backgroundColor) else ColorProvider(Color.White),
+                                        textColor = if (data.useColors) ColorProvider(data.textColor) else ColorProvider(Color.Black),
                                         currentPower = data.currentPower,
                                         criticalPower = data.criticalPower,
                                         wPrimeJoules = joulesValue,
                                         anaerobicCapacity = data.anaerobicCapacity,
                                         textSize = config.textSize,
                                         alignment = config.alignment,
-                                        numberVerticalOffset = getNumberVerticalOffset(),
                                         targetHeightFraction = getTargetHeightFraction(),
-                                        valueBottomExtraPadding = getValueBottomPaddingExtra(),
                                         fixedCharCount = getFixedCharCount(),
                                         sizeScale = getSizeScale(),
+                                        showArrow = data.showArrow,
+                                        viewSize = config.viewSize,
                                     )
                                 }.remoteViews
                             }
@@ -298,10 +298,12 @@ abstract class WPrimeDataTypeBase(
                     currentPower = previewPower.toInt(),
                     criticalPower = configuration.criticalPower.toInt(),
                     anaerobicCapacity = configuration.anaerobicCapacity,
+                    showArrow = configuration.showArrow,
+                    useColors = configuration.useColors,
                 ),
             )
 
-            simulationTime += 2.0
+            simulationTime += 1.0
             delay(2000)
         }
     }
@@ -309,6 +311,7 @@ abstract class WPrimeDataTypeBase(
     private fun streamRealWPrimeData(): Flow<WPrimeDisplayData> = flow {
         val powerFlow = karooSystem.streamDataFlow(DataType.Type.POWER)
         powerFlow.collect { power ->
+            val config = wprimeSettings.configuration.first()
             when (power) {
                 is StreamState.Streaming -> {
                     val powerValue = power.dataPoint.singleValue ?: 0.0
@@ -326,6 +329,8 @@ abstract class WPrimeDataTypeBase(
                             currentPower = powerValue.toInt(),
                             criticalPower = criticalPower.toInt(),
                             anaerobicCapacity = anaerobicCapacity,
+                            showArrow = config.showArrow,
+                            useColors = config.useColors,
                         ),
                     )
                 }
@@ -343,6 +348,8 @@ abstract class WPrimeDataTypeBase(
                             currentPower = 0,
                             criticalPower = criticalPower.toInt(),
                             anaerobicCapacity = anaerobicCapacity,
+                            showArrow = config.showArrow,
+                            useColors = config.useColors,
                         ),
                     )
                 }
@@ -360,6 +367,8 @@ abstract class WPrimeDataTypeBase(
                             currentPower = 0,
                             criticalPower = criticalPower.toInt(),
                             anaerobicCapacity = anaerobicCapacity,
+                            showArrow = config.showArrow,
+                            useColors = config.useColors,
                         ),
                     )
                 }

@@ -43,6 +43,5 @@ class WPrimeDataType(
         return (joules / capacity * 100.0).coerceIn(0.0, 100.0)
     }
 
-    override fun getNumberVerticalOffset(): Int = 0 // percent view baseline
     override fun getFixedCharCount(): Int = 3 // Always size for 3 chars (e.g., 100)
 }

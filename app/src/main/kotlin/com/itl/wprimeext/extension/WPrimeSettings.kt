@@ -22,6 +22,8 @@ data class WPrimeConfiguration(
     val kIn: Double = 0.002,
     val recordFit: Boolean = true,
     val modelType: WPrimeModelType = WPrimeModelType.SKIBA_DIFFERENTIAL,
+    val showArrow: Boolean = true,
+    val useColors: Boolean = true,
 )
 
 class WPrimeSettings(private val context: Context) {
@@ -33,6 +35,8 @@ class WPrimeSettings(private val context: Context) {
         private val K_IN_KEY = doublePreferencesKey("k_in")
         private val RECORD_FIT_KEY = booleanPreferencesKey("record_fit")
         private val MODEL_TYPE_KEY = stringPreferencesKey("model_type")
+        private val SHOW_ARROW_KEY = booleanPreferencesKey("show_arrow")
+        private val USE_COLORS_KEY = booleanPreferencesKey("use_colors")
     }
 
     val configuration: Flow<WPrimeConfiguration> = context.dataStore.data.map { preferences ->
@@ -46,6 +50,8 @@ class WPrimeSettings(private val context: Context) {
             kIn = preferences[K_IN_KEY] ?: 0.002,
             recordFit = preferences[RECORD_FIT_KEY] ?: true,
             modelType = modelType,
+            showArrow = preferences[SHOW_ARROW_KEY] ?: true,
+            useColors = preferences[USE_COLORS_KEY] ?: true,
         )
 
         val isDefault = preferences[CRITICAL_POWER_KEY] == null
@@ -56,7 +62,7 @@ class WPrimeSettings(private val context: Context) {
         }
         WPrimeLogger.d(
             WPrimeLogger.Module.SETTINGS,
-            "Loaded configuration - Model: ${config.modelType}, CP: ${config.criticalPower}, W': ${config.anaerobicCapacity}, Tau: ${config.tauRecovery}, kIn: ${config.kIn}, recordFit: ${config.recordFit}",
+            "Loaded configuration - Model: ${config.modelType}, CP: ${config.criticalPower}, W': ${config.anaerobicCapacity}, Tau: ${config.tauRecovery}, kIn: ${config.kIn}, recordFit: ${config.recordFit}, showArrow: ${config.showArrow}, useColors: ${config.useColors}",
         )
 
         config
@@ -99,7 +105,23 @@ class WPrimeSettings(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences[RECORD_FIT_KEY] = enabled
         }
-        WPrimeLogger.i(WPrimeLogger.Module.SETTINGS, LogConstants.SETTINGS_SAVED + " - Record FIT toggle")
+        WPrimeLogger.i(WPrimeLogger.Module.SETTINGS, LogConstants.SETTINGS_SAVED + " - Record Fit")
+    }
+
+    suspend fun updateShowArrow(enabled: Boolean) {
+        WPrimeLogger.d(WPrimeLogger.Module.SETTINGS, "Updating showArrow: $enabled")
+        context.dataStore.edit { preferences ->
+            preferences[SHOW_ARROW_KEY] = enabled
+        }
+        WPrimeLogger.i(WPrimeLogger.Module.SETTINGS, LogConstants.SETTINGS_SAVED + " - Show Arrow")
+    }
+
+    suspend fun updateUseColors(enabled: Boolean) {
+        WPrimeLogger.d(WPrimeLogger.Module.SETTINGS, "Updating useColors: $enabled")
+        context.dataStore.edit { preferences ->
+            preferences[USE_COLORS_KEY] = enabled
+        }
+        WPrimeLogger.i(WPrimeLogger.Module.SETTINGS, LogConstants.SETTINGS_SAVED + " - Use Colors")
     }
 
     suspend fun updateModelType(modelType: WPrimeModelType) {

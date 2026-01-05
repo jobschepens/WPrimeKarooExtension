@@ -62,6 +62,20 @@ class WPrimeConfigViewModel(private val settings: WPrimeSettings) : ViewModel() 
         }
     }
 
+    fun updateShowArrow(enabled: Boolean) {
+        viewModelScope.launch {
+            settings.updateShowArrow(enabled)
+            _configuration.value = _configuration.value.copy(showArrow = enabled)
+        }
+    }
+
+    fun updateUseColors(enabled: Boolean) {
+        viewModelScope.launch {
+            settings.updateUseColors(enabled)
+            _configuration.value = _configuration.value.copy(useColors = enabled)
+        }
+    }
+
     fun updateModelType(modelType: WPrimeModelType) {
         viewModelScope.launch {
             settings.updateModelType(modelType)

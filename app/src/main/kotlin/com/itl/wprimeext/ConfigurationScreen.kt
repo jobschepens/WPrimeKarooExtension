@@ -74,6 +74,8 @@ fun ConfigurationScreen() {
         onTauRecoveryChange = viewModel::updateTauRecovery,
         onKInChange = viewModel::updateKIn,
         onRecordFitChange = viewModel::updateRecordFit,
+        onShowArrowChange = viewModel::updateShowArrow,
+        onUseColorsChange = viewModel::updateUseColors,
         onModelSelected = viewModel::updateModelType,
         onBackClick = { (context as? MainActivity)?.finish() },
     )
@@ -93,6 +95,8 @@ fun ConfigurationScreenLayout(
     onTauRecoveryChange: (Double) -> Unit,
     onKInChange: (Double) -> Unit,
     onRecordFitChange: (Boolean) -> Unit,
+    onShowArrowChange: (Boolean) -> Unit,
+    onUseColorsChange: (Boolean) -> Unit,
     onModelSelected: (WPrimeModelType) -> Unit,
     onBackClick: () -> Unit,
 ) {
@@ -167,6 +171,88 @@ fun ConfigurationScreenLayout(
                             enabled = true,
                         )
                     }
+
+                    Text(
+                        text = "Display Settings",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+
+                    // Toggle for Show Arrow
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth(0.75f)) {
+                                Text(
+                                    text = "Show Trend Arrow",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = "Display arrow indicating W' trend",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = configuration.showArrow,
+                                onCheckedChange = onShowArrowChange,
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                                ),
+                            )
+                        }
+                    }
+
+                    // Toggle for Use Colors
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth(0.75f)) {
+                                Text(
+                                    text = "Use Dynamic Colors",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = "Colorize background based on W' depletion",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = configuration.useColors,
+                                onCheckedChange = onUseColorsChange,
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                                ),
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "System Integration",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
 
                     // Toggle para grabar datos W' al archivo FIT
                     Card(
@@ -328,12 +414,16 @@ fun ConfigurationScreenPreview() {
                 kIn = 0.002,
                 recordFit = true,
                 modelType = WPrimeModelType.BARTRAM,
+                showArrow = true,
+                useColors = true,
             ),
             onCriticalPowerChange = {},
             onAnaerobicCapacityChange = {},
             onTauRecoveryChange = {},
             onKInChange = {},
             onRecordFitChange = {},
+            onShowArrowChange = {},
+            onUseColorsChange = {},
             onModelSelected = {},
             onBackClick = {},
         )
